@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 from pylabel import post_from_url
 
 load_dotenv(override=True)
-USERNAME = os.getenv("USERNAME")
-PW = os.getenv("PW")
+USERNAME = "trustandsafety14.bsky.social"#os.getenv("USERNAME")
+PW = "W2DU:TG3fwn9dgc"#os.getenv("PW")
 
 
 def main():
