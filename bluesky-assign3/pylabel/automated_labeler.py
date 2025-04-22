@@ -36,7 +36,7 @@ class AutomatedLabeler:
         post = self.url_get_post(url)
         label = self.label_words(post)
         result = [url, label]
-        return result
+        return label
     
     def read_urls(self):
         df = pd.read_csv(self.input_dir)
@@ -44,8 +44,8 @@ class AutomatedLabeler:
 
     def label_words(self, post):
         try:
-            df = pd.read_csv("../labeler-inputs/t-and-s-words.csv")
-            df1 = pd.read_csv("../labeler-inputs/t-and-s-domains.csv")
+            df = pd.read_csv("labeler-inputs/t-and-s-words.csv")
+            df1 = pd.read_csv("labeler-inputs/t-and-s-domains.csv")
         except Exception as e:
             print(e)
         word_ls = df["Word"].tolist()
@@ -90,6 +90,6 @@ def t_and_s_word_domain_label():
 
 
 ### Test get image from url
-image_test = AutomatedLabeler(client, "../test-data/input-posts-dogs.csv")
-image = image_test.get_image(image_test.urls[0])
-image.show()
+# image_test = AutomatedLabeler(client, "../test-data/input-posts-dogs.csv")
+# image = image_test.get_image(image_test.urls[0])
+# image.show()
