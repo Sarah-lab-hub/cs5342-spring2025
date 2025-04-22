@@ -7,11 +7,13 @@ from PIL import Image
 from io import BytesIO
 import requests
 from dotenv import load_dotenv
+import imagehash
+import os
 
 
 T_AND_S_LABEL = "t-and-s"
 DOG_LABEL = "dog"
-THRESH = 0.3
+THRESH = 17
 
 class AutomatedLabeler:
     """Automated labeler implementation"""
@@ -19,8 +21,25 @@ class AutomatedLabeler:
     def __init__(self, client: Client, input_dir):
         self.client = client
         self.input_dir = input_dir
-        self.urls = None
-        self.read_urls()
+
+        try:
+            self.word_df = pd.read_csv(os.path.join(self.input_dir, "t-and-s-words.csv"))
+            self.domain_df = pd.read_csv(os.path.join(self.input_dir, "t-and-s-domains.csv"))
+        except Exception as e:
+            print(f"[ERROR] Failed to load input CSVs from {self.input_dir}: {e}")
+        
+        try:
+            self.news_df = pd.read_csv(os.path.join(self.input_dir, "news-domains.csv"))
+        except Exception as e:
+            self.news_df = None
+            print(f"[INFO] No news-domains.csv found in {self.input_dir}: {e}")
+
+        self.dog_hashes = []
+        dog_image_dir = os.path.join(self.input_dir, "dog-list-images")
+        if os.path.exists(dog_image_dir):
+            self.load_dog_image_hashes(dog_image_dir)
+        if dog_image_dir:
+            self.load_dog_image_hashes(dog_image_dir)
 
     def url_get_post(self, url):
         parts = url.split("/")
@@ -28,29 +47,37 @@ class AutomatedLabeler:
         handle = parts[-3]
         post = self.client.get_post(rkey, handle)
         return post
-   
+
     def moderate_post(self, url: str) -> List[str]:
-        """
-        Apply moderation to the post specified by the given url
-        """
-        post = self.url_get_post(url)
-        label = self.label_words(post)
-        result = [url, label]
-        return label
-    
-    def read_urls(self):
-        df = pd.read_csv(self.input_dir)
-        self.urls = df["URL"]
+        labels = []
+
+        try:
+            post = self.url_get_post(url)
+            if self.label_words(post):
+                labels.append(T_AND_S_LABEL)
+        except Exception as e:
+            print(f"[WARNING] Error in text moderation for {url}: {e}")
+
+        try:
+            if self.news_df is not None:
+                news_labels = self.label_news_sources(post)
+                labels.extend(news_labels)
+        except Exception as e:
+            print(f"[WARNING] Error in news domain labeling for {url}: {e}")
+
+        try:
+            img = self.get_image(url)
+            if img and self.image_matches_dog(img):
+                labels.append(DOG_LABEL)
+        except Exception as e:
+            print(f"[INFO] No valid image found or failed to match dog image for {url}: {e}")
+
+        return list(set(labels))
 
     def label_words(self, post):
-        try:
-            df = pd.read_csv("labeler-inputs/t-and-s-words.csv")
-            df1 = pd.read_csv("labeler-inputs/t-and-s-domains.csv")
-        except Exception as e:
-            print(e)
-        word_ls = df["Word"].tolist()
+        word_ls = self.word_df["Word"].tolist()
         word_ls_lower = [word.lower() for word in word_ls]
-        domains_ls = df1["Domain"].tolist()
+        domains_ls = self.domain_df["Domain"].tolist()
         domains_ls_lower = [domain.lower() for domain in domains_ls]
 
         text = post.value.text
@@ -59,6 +86,15 @@ class AutomatedLabeler:
             return ["t-and-s"]
         else:
             return []
+    
+    def label_news_sources(self, post):
+        text = post.value.text.lower()
+        domain_to_label = dict(zip(self.news_df["Domain"].str.lower(), self.news_df["Source"]))
+        found_labels = set()
+        for domain, label in domain_to_label.items():
+            if domain in text:
+                found_labels.add(label)
+        return list(found_labels)
     
     def get_image(self, url):
         post = self.url_get_post(url)
@@ -71,25 +107,20 @@ class AutomatedLabeler:
             img = Image.open(BytesIO(response.content))
         return img
 
+    def load_dog_image_hashes(self, dog_image_dir):
+        for fname in os.listdir(dog_image_dir):
+            if fname.lower().endswith((".jpg")):
+                path = os.path.join(dog_image_dir, fname)
+                try:
+                    img = Image.open(path)
+                    img_hash = imagehash.phash(img)
+                    self.dog_hashes.append(img_hash)
+                except Exception as e:
+                    print(f"Error hashing {fname}: {e}")
 
-
-load_dotenv(override=True)
-USERNAME = "trustandsafety14.bsky.social"#os.getenv("USERNAME")
-PW = "W2DU:TG3fwn9dgc"#os.getenv("PW")
-client = Client()
-client.login(USERNAME, PW)
-
-
-### Milestone 1 Label t&s words and domains
-def t_and_s_word_domain_label():
-    word_labeler = AutomatedLabeler(client, "../test-data/input-posts-t-and-s.csv")
-    word_labels = []
-    for url in word_labeler.urls:
-        word_labels.append(word_labeler.moderate_post(url))
-    print(word_labels)
-
-
-### Test get image from url
-# image_test = AutomatedLabeler(client, "../test-data/input-posts-dogs.csv")
-# image = image_test.get_image(image_test.urls[0])
-# image.show()
+    def image_matches_dog(self, img):
+        img_hash = imagehash.phash(img)
+        for ref_hash in self.dog_hashes:
+            if img_hash - ref_hash <= THRESH:
+                return True
+        return False

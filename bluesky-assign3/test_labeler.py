@@ -36,9 +36,11 @@ def main():
 
     urls = pd.read_csv(args.input_urls)
     num_correct, total = 0, urls.shape[0]
+    debug_label = []
     for _index, row in urls.iterrows():
         url, expected_labels = row["URL"], json.loads(row["Labels"])
         labels = labeler.moderate_post(url)
+        debug_label.append(labels)
         if sorted(labels) == sorted(expected_labels):
             num_correct += 1
         else:
@@ -47,6 +49,7 @@ def main():
             label_post(client, labeler_client, url, labels)
     print(f"The labeler produced {num_correct} correct labels assignments out of {total}")
     print(f"Overall ratio of correct label assignments {num_correct/total}")
+    print(debug_label)
 
 
 if __name__ == "__main__":
