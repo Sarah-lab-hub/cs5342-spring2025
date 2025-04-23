@@ -95,17 +95,23 @@ class AutomatedLabeler:
             if domain in text:
                 found_labels.add(label)
         return list(found_labels)
-    
+
     def get_image(self, url):
         post = self.url_get_post(url)
         uri = post.uri
         thread = self.client.get_post_thread(uri)
-        fullsize = thread.thread.post.embed.images[0].fullsize
-        response = requests.get(fullsize)
-        if response.status_code == 200:
-            # Open the image using PIL
-            img = Image.open(BytesIO(response.content))
-        return img
+
+        try:
+            embed = thread.thread.post.embed
+            if hasattr(embed, "images") and embed.images:
+                fullsize = embed.images[0].fullsize
+                response = requests.get(fullsize)
+                if response.status_code == 200:
+                    return Image.open(BytesIO(response.content))
+        except Exception as e:
+            print(f"[INFO] Failed to extract image from {url}: {e}")
+
+        return None
 
     def load_dog_image_hashes(self, dog_image_dir):
         for fname in os.listdir(dog_image_dir):
